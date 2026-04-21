@@ -2,7 +2,6 @@ import cv2
 import mediapipe as mp
 import pickle
 import time
-import csv
 import os
 from datetime import datetime
 import win32com.client
@@ -14,11 +13,10 @@ with open("model.pkl", "rb") as f:
 # Windows voice
 speaker = win32com.client.Dispatch("SAPI.SpVoice")
 
-# Create CSV file if not exists
-if not os.path.exists("history.csv"):
-    with open("history.csv", "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["timestamp", "raw_word", "corrected_word", "status"])
+# Create TXT file if not exists
+if not os.path.exists("history.txt"):
+    with open("history.txt", "w", encoding="utf-8") as f:
+        f.write("timestamp | raw_word | corrected_word | status\n")
 
 # MediaPipe
 mp_hands = mp.solutions.hands
@@ -73,7 +71,7 @@ while True:
                 2
             )
 
-    # Auto add letter if stable for 1 sec
+    # Auto add symbol every 1 sec if stable
     if prediction != "" and prediction == last_prediction:
         if time.time() - last_add_time > 1:
             word += str(prediction)
@@ -111,23 +109,21 @@ while True:
     if key == ord('c'):
         if word != "":
 
-            # Speak
+            # Speak word
             speaker.Speak(word)
 
-            # Save in future-ready CSV
-            with open("history.csv", "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    word,
-                    "",
-                    "pending"
-                ])
+            # Save in TXT format for future JS use
+            with open("history.txt", "a", encoding="utf-8") as f:
+                f.write(
+                    f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
+                    f"{word} | "
+                    f" | pending\n"
+                )
 
             # Reset word
             word = ""
 
-    # Delete last letter
+    # Delete last character
     if key == ord('d'):
         word = word[:-1]
 
