@@ -35,7 +35,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="D:\PYTHON\Python\sign-language-AtoZ\venv"
+VIRTUAL_ENV="C:\Users\sapta\Documents\00git\integ\venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

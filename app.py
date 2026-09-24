@@ -7,16 +7,26 @@ import mediapipe as mp
 import pickle
 from google import genai
 import time
+import os
 
 # =========================
 # CONFIG
 # =========================
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 app = Flask(__name__)
 CORS(app)
 
-# 🔑 PUT YOUR NEW API KEY HERE
-client = genai.Client(api_key="AIzaSyCVX-WiWf7b2dqpshf-9O8Gn9M5kggIfHY")
+# =========================
+# GEMINI
+# =========================
+
+client = genai.Client(
+    api_key=os.environ.get("GEMINI_API_KEY")
+)
 
 # Rate limit protection
 last_call_time = 0
@@ -25,85 +35,224 @@ last_call_time = 0
 # LOAD MODEL
 # =========================
 
-model = pickle.load(open("model.pkl", "rb"))
+with open("model.pkl", "rb") as f:
+    model = pickle.load(f)
+
+# =========================
+# MEDIAPIPE
+# =========================
 
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=True, max_num_hands=1)
+
+hands = mp_hands.Hands(
+    static_image_mode=True,
+    max_num_hands=1
+)
 
 # =========================
-# ROUTE 1: PREDICT (CAMERA)
+# ROUTE 1: PREDICT
 # =========================
 
-@app.route('/predict', methods=['POST'])
+@app.route("/predict", methods=["POST"])
 def predict():
+
     data = request.json
 
-    if 'image' not in data:
-        return jsonify({"error": "No image provided"})
+    if not data or "image" not in data:
+        return jsonify({
+            "error": "No image provided"
+        }), 400
 
     try:
-        # Decode base64 image
-        image_data = base64.b64decode(data['image'].split(',')[1])
-        np_arr = np.frombuffer(image_data, np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-        results = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        # =========================
+        # 1. DECODE BASE64 IMAGE
+        # =========================
+
+        image_string = data["image"]
+
+        # Supports:
+        # data:image/jpeg;base64,XXXX
+        # OR
+        # XXXX
+
+        if "," in image_string:
+            image_string = image_string.split(",", 1)[1]
+
+        image_data = base64.b64decode(image_string)
+
+        np_arr = np.frombuffer(
+            image_data,
+            np.uint8
+        )
+
+        frame = cv2.imdecode(
+            np_arr,
+            cv2.IMREAD_COLOR
+        )
+
+        if frame is None:
+            return jsonify({
+                "error": "Could not decode image"
+            }), 400
+
+        print(
+            "Image decoded:",
+            frame.shape
+        )
+
+        # =========================
+        # 2. MEDIAPIPE
+        # =========================
+
+        rgb_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2RGB
+        )
+
+        results = hands.process(rgb_frame)
+
+        print(
+            "Hand detected:",
+            bool(results.multi_hand_landmarks)
+        )
+
+        # =========================
+        # 3. EXTRACT LANDMARKS
+        # =========================
 
         if results.multi_hand_landmarks:
+
             landmarks = results.multi_hand_landmarks[0]
+
             data_aux = []
 
             for lm in landmarks.landmark:
+
                 data_aux.append(lm.x)
                 data_aux.append(lm.y)
 
-            prediction = model.predict([data_aux])[0]
+            print(
+                "Number of features:",
+                len(data_aux)
+            )
 
-            return jsonify({"gesture": str(prediction)})
+            # =========================
+            # 4. MODEL PREDICTION
+            # =========================
 
-        return jsonify({"gesture": "No gesture"})
+            prediction = model.predict(
+                [data_aux]
+            )[0]
+
+            print(
+                "Prediction:",
+                prediction
+            )
+
+            return jsonify({
+                "gesture": str(prediction)
+            })
+
+        return jsonify({
+            "gesture": "No gesture"
+        })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+
+        import traceback
+
+        print("\n")
+        print("========== PREDICT ERROR ==========")
+
+        traceback.print_exc()
+
+        print("====================================")
+        print("\n")
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================
 # ROUTE 2: GEMINI CORRECTION
 # =========================
 
-@app.route('/correct', methods=['POST'])
+@app.route("/correct", methods=["POST"])
 def correct_text():
+
     global last_call_time
 
-    # Prevent rapid requests
+    # =========================
+    # RATE LIMIT
+    # =========================
+
     if time.time() - last_call_time < 5:
-        return jsonify({"corrected": "Please wait a few seconds..."})
+
+        return jsonify({
+            "corrected": "Please wait a few seconds..."
+        })
 
     last_call_time = time.time()
 
+    # =========================
+    # GET TEXT
+    # =========================
+
     data = request.json
-    text = data.get("text", "")
+
+    text = data.get(
+        "text",
+        ""
+    )
 
     if not text.strip():
-        return jsonify({"corrected": ""})
+
+        return jsonify({
+            "corrected": ""
+        })
 
     try:
+
+        # =========================
+        # GEMINI REQUEST
+        # =========================
+
         response = client.models.generate_content(
+
             model="gemini-2.0-flash",
+
             contents=f"Correct this sentence properly: {text}"
+
         )
 
         corrected = response.text
 
-        return jsonify({"corrected": corrected})
+        return jsonify({
+            "corrected": corrected
+        })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================
 # RUN SERVER
 # =========================
 
-if __name__ == '__main__':
-    app.run(port=5001, debug=True)
+if __name__ == "__main__":
+
+    app.run(
+        host="0.0.0.0",
+        port=int(
+            os.environ.get(
+                "PORT",
+                5001
+            )
+        )
+    )
+

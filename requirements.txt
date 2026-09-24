@@ -38,7 +38,7 @@ joblib==1.5.3
 kiwisolver==1.5.0
 MarkupSafe==3.0.3
 matplotlib==3.10.8
-mediapipe==0.10.9
+mediapipe
 numpy==2.4.4
 opencv-contrib-python==4.13.0.92
 opencv-python==4.13.0.92
@@ -73,3 +73,4 @@ uritemplate==4.2.0
 urllib3==2.6.3
 websockets==16.0
 Werkzeug==3.1.8
+gunion

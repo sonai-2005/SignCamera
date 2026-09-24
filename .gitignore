@@ -1,0 +1,6 @@
+venv/
+.env
+__pycache__/
+*.pyc
+collect_data.py
+train_model.py
